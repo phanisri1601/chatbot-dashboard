@@ -1,0 +1,11 @@
+flask
+python-dotenv
+sentence-transformers==2.7.0
+chromadb==0.5.5
+beautifulsoup4
+markdown
+lxml
+transformers
+torch
+requests
+openai
