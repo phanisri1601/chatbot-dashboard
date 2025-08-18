@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { ref, push, set, serverTimestamp } from 'firebase/database';
 import { database } from '../firebase/config';
 import { FiSend, FiUser, FiMessageCircle, FiCalendar, FiClock } from 'react-icons/fi';
+import { generateAIResponse } from '../services/gemini';
 
 const ChatbotContainer = styled.div`
   position: fixed;
@@ -33,7 +34,20 @@ const ChatMessages = styled.div`
   padding: 20px;
   overflow-y: auto;
   background: #f8f9fa;
+  
+  @keyframes typing {
+    0%, 60%, 100% {
+      transform: translateY(0);
+      opacity: 0.4;
+    }
+    30% {
+      transform: translateY(-10px);
+      opacity: 1;
+    }
+  }
 `;
+
+
 
 const Message = styled.div`
   display: flex;
@@ -100,13 +114,47 @@ const SendButton = styled.button`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: background-color 0.2s;
   
   &:hover {
     background: #0056b3;
-    transform: scale(1.05);
+  }
+  
+  &:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
   }
 `;
+
+const BookingButton = styled.button`
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  flex: 1;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+
 
 const LeadForm = styled.div`
   background: white;
@@ -114,6 +162,40 @@ const LeadForm = styled.div`
   border-radius: 10px;
   margin: 10px 0;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+`;
+
+const ButtonsRow = styled.div`
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+`;
+
+const LeadButton = styled.button`
+  background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  flex: 1;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+  
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
 `;
 
 const FormInput = styled.input`
@@ -142,7 +224,7 @@ const FormButton = styled.button`
 const AppointmentFormHeader = styled.h4`
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   color: #007bff;
   margin-bottom: 15px;
 `;
@@ -176,6 +258,7 @@ const Chatbot = () => {
     notes: ''
   });
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -199,56 +282,42 @@ const Chatbot = () => {
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
 
-    // Simulate bot response
-    setTimeout(() => {
-      const botResponse = generateBotResponse(inputText);
-      setMessages(prev => [...prev, botResponse]);
-    }, 1000);
-  };
+    // Show typing indicator
+    setIsTyping(true);
 
-  const generateBotResponse = (userInput) => {
-    const lowerInput = userInput.toLowerCase();
-    
-    if (lowerInput.includes('pricing') || lowerInput.includes('cost') || lowerInput.includes('price')) {
-      return {
+    try {
+      // Generate AI response
+      const aiResponse = await generateAIResponse(inputText);
+      
+      // Check if we should show forms based on user input (do not auto-open booking)
+      const lowerInput = inputText.toLowerCase();
+      if (lowerInput.includes('pricing') || lowerInput.includes('cost') || lowerInput.includes('price') || lowerInput.includes('contact') || lowerInput.includes('speak') || lowerInput.includes('call') || lowerInput.includes('lead') || lowerInput.includes('quote') || lowerInput.includes('sales')) {
+        setShowLeadForm(true);
+        setShowAppointmentForm(false); // Ensure appointment form stays closed unless button clicked
+      }
+
+      const botResponse = {
         id: Date.now(),
-        text: "I'd be happy to help you with pricing information. To provide you with the most accurate quote, I'll need to capture some details. Would you like me to create a lead for our sales team?",
+        text: aiResponse,
         isUser: false,
         timestamp: new Date()
       };
-    } else if (lowerInput.includes('contact') || lowerInput.includes('speak') || lowerInput.includes('call')) {
-      return {
+
+      setMessages(prev => [...prev, botResponse]);
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      const botResponse = {
         id: Date.now(),
-        text: "I can connect you with our team. Let me capture your information so we can get back to you promptly.",
+        text: "I can help with IM Solutions — services, pricing, appointments, or company info. What would you like to explore?",
         isUser: false,
         timestamp: new Date()
       };
-    } else if (lowerInput.includes('lead') || lowerInput.includes('quote') || lowerInput.includes('sales')) {
-      setShowLeadForm(true);
-      return {
-        id: Date.now(),
-        text: "Great! I'll help you create a lead. Please fill out the form below with your details.",
-        isUser: false,
-        timestamp: new Date()
-      };
-    } else if (lowerInput.includes('appointment') || lowerInput.includes('schedule') || lowerInput.includes('book') || lowerInput.includes('meeting')) {
-      console.log('Showing appointment form');
-      setShowAppointmentForm(true);
-      return {
-        id: Date.now(),
-        text: "Perfect! I can help you schedule an appointment. Please fill out the appointment form below with your preferred date and time.",
-        isUser: false,
-        timestamp: new Date()
-      };
-    } else {
-      return {
-        id: Date.now(),
-        text: "Thank you for your message. I'm here to help! If you need specific information about our services, pricing, want to speak with our team, or schedule an appointment, just let me know.",
-        isUser: false,
-        timestamp: new Date()
-      };
+      setMessages(prev => [...prev, botResponse]);
+    } finally {
+      setIsTyping(false);
     }
   };
+
 
   const handleLeadSubmit = async (e) => {
     e.preventDefault();
@@ -390,7 +459,7 @@ const Chatbot = () => {
         {messages.map((message) => (
           <Message key={message.id} isUser={message.isUser}>
             <MessageIcon isUser={message.isUser}>
-              {message.isUser ? <FiUser /> : <FiMessageCircle />}
+              {message.isUser ? '👤' : <FiMessageCircle />}
             </MessageIcon>
             <MessageBubble isUser={message.isUser}>
               {message.text}
@@ -447,7 +516,32 @@ const Chatbot = () => {
 
         {showAppointmentForm && (
           <LeadForm>
-            <AppointmentFormHeader><FiCalendar /> Schedule Your Appointment</AppointmentFormHeader>
+            <AppointmentFormHeader>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FiCalendar /> Schedule Your Appointment
+              </div>
+              <button 
+                onClick={() => setShowAppointmentForm(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  color: '#6c757d',
+                  padding: '4px',
+                  borderRadius: '50%',
+                  width: '30px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onMouseEnter={(e) => e.target.style.background = '#f8f9fa'}
+                onMouseLeave={(e) => e.target.style.background = 'none'}
+              >
+                ×
+              </button>
+            </AppointmentFormHeader>
             <form onSubmit={handleAppointmentSubmit}>
               <FormInput
                 type="text"
@@ -509,10 +603,58 @@ const Chatbot = () => {
           </LeadForm>
         )}
         
+        {isTyping && (
+          <Message>
+            <MessageIcon>
+              <FiMessageCircle />
+            </MessageIcon>
+            <MessageBubble>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ fontSize: '12px' }}>AI is typing</div>
+                <div style={{ display: 'flex', gap: '2px' }}>
+                  <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#007bff', animation: 'typing 1.4s infinite' }}></div>
+                  <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#007bff', animation: 'typing 1.4s infinite 0.2s' }}></div>
+                  <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#007bff', animation: 'typing 1.4s infinite 0.4s' }}></div>
+                </div>
+              </div>
+            </MessageBubble>
+          </Message>
+        )}
+        
         <div ref={messagesEndRef} />
       </ChatMessages>
       
       <ChatInput>
+        <ButtonsRow>
+          <LeadButton onClick={() => {
+            setShowLeadForm(true);
+            setShowAppointmentForm(false);
+            const leadMessage = {
+              id: Date.now(),
+              text: "Great! I've opened the lead form for you. Please fill in your details below.",
+              isUser: false,
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, leadMessage]);
+          }}>
+            <FiUser />
+            Get Quote
+          </LeadButton>
+          <BookingButton onClick={() => {
+            setShowAppointmentForm(true);
+            setShowLeadForm(false);
+            const bookingMessage = {
+              id: Date.now(),
+              text: "Great! I've opened the appointment booking form for you. Please fill in your details below.",
+              isUser: false,
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, bookingMessage]);
+          }}>
+            <FiCalendar />
+            Book Appointment
+          </BookingButton>
+        </ButtonsRow>
         <InputGroup>
           <Input
             type="text"
